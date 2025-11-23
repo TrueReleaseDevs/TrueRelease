@@ -134,7 +134,7 @@ def run_update():
     user_profile = sp.current_user()
     current_user_id = user_profile['id']
 
-    from spotify_logic import run_update_for_user
+    from .spotify_logic import run_update_for_user
     try:
         success = run_update_for_user(sp, current_user_id, exclude_covers, exclude_remixes)
         return {"status": "success", "message": "Playlist updated!"}
