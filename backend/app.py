@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, redirect, session, render_template
 from flask_cors import CORS
 from spotipy.oauth2 import SpotifyOAuth
-from models import db, User
+from .models import db, User
 from dotenv import load_dotenv
 import spotipy
 
