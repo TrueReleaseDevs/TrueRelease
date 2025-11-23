@@ -1,0 +1,65 @@
+:root {
+  --spotify-green: #1DB954;
+  --spotify-black: #191414;
+  --spotify-dark-grey: #121212;
+  --spotify-grey: #535353;
+  --spotify-light-grey: #B3B3B3;
+  --spotify-white: #FFFFFF;
+
+  --font-family: 'Circular Std', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--spotify-dark-grey);
+  color: var(--spotify-white);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  font-family: inherit;
+}
+
+/* Utility Classes */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.btn-primary {
+  background-color: var(--spotify-green);
+  color: var(--spotify-white);
+  padding: 14px 32px;
+  border-radius: 500px; /* Pill shape */
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: transform 0.1s ease, background-color 0.2s ease;
+}
+
+.btn-primary:hover {
+  background-color: #1ed760; /* Slightly lighter green */
+  transform: scale(1.05);
+}
+
+.btn-primary:active {
+  transform: scale(1);
+  background-color: #1aa34a;
+}
