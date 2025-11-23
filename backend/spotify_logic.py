@@ -1,18 +1,24 @@
+import concurrent.futures
 import time
 from datetime import datetime, timedelta, timezone
 import spotipy
 
-# --- Configuration Constants from your script ---
+# --- Configuration Constants ---
 MIN_DURATION_MS = 60_000
-# EXCLUDE_KEYWORDS removed from global scope, will be constructed dynamically
 
+def fetch_artist_albums(sp, artist_id):
+    """Helper to fetch albums for a single artist safely."""
+    try:
+        return sp.artist_albums(artist_id, album_type="album,single", limit=50)
+    except Exception as e:
+        print(f"Error fetching albums for artist {artist_id}: {e}")
+        return None
 
 def remove_in_batches(sp, playlist_id, uris, batch_size=100):
     """Helper function to remove items in batches"""
     for i in range(0, len(uris), batch_size):
         sp.playlist_remove_all_occurrences_of_items(
             playlist_id, uris[i: i + batch_size])
-
 
 def run_update_for_user(sp, current_user_id, exclude_covers=False, exclude_remixes=False):
     """
@@ -46,37 +52,30 @@ def run_update_for_user(sp, current_user_id, exclude_covers=False, exclude_remix
     artist_ids = [a["id"] for a in artists]
     print(f"Found {len(artist_ids)} followed artists.")
 
-    # 2) Identify new tracks released in the past 7 (or 3) days
-    # Your script used 3 days in the logic, though commented 7.
-    # Adjusted to 3 days as per your specific logic line.
+    # 2) Identify new tracks released in the past 3 days
     start_date_check = datetime.now(timezone.utc) - timedelta(days=3)
-
     new_tracks = []
 
-    for artist_id in artist_ids:
-        try:
-            albums = sp.artist_albums(
-                artist_id, album_type="album,single", limit=50)
-        except Exception as e:
-            print(f"Error fetching albums for artist {artist_id}: {e}")
-            continue
-
+    def process_artist(artist_id):
+        """Inner function to process a single artist's albums and find new tracks."""
+        albums = fetch_artist_albums(sp, artist_id)
+        if not albums:
+            return []
+        
+        artist_tracks = []
         for alb in albums["items"]:
             rd = alb.get("release_date")
             precision = alb.get("release_date_precision")
 
             try:
                 if precision == "day":
-                    rd_dt = datetime.strptime(
-                        rd, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    rd_dt = datetime.strptime(rd, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 elif precision == "month":
-                    rd_dt = datetime.strptime(
-                        rd, "%Y-%m").replace(tzinfo=timezone.utc)
+                    rd_dt = datetime.strptime(rd, "%Y-%m").replace(tzinfo=timezone.utc)
                 else:
-                    rd_dt = datetime.strptime(
-                        rd, "%Y").replace(tzinfo=timezone.utc)
+                    rd_dt = datetime.strptime(rd, "%Y").replace(tzinfo=timezone.utc)
             except ValueError:
-                continue  # Skip if date format is weird
+                continue
 
             if rd_dt >= start_date_check:
                 try:
@@ -89,13 +88,27 @@ def run_update_for_user(sp, current_user_id, exclude_covers=False, exclude_remix
                         if any(keyword in track_name.lower() for keyword in exclude_keywords):
                             continue
 
-                        new_tracks.append({
+                        artist_tracks.append({
                             "uri":  t["uri"],
                             "date": rd_dt
                         })
                 except Exception as e:
-                    print(
-                        f"Error processing tracks for album {alb['id']}: {e}")
+                    print(f"Error processing tracks for album {alb['id']}: {e}")
+        return artist_tracks
+
+    print(f"Fetching albums for {len(artist_ids)} artists in parallel...")
+    
+    # Use ThreadPoolExecutor to fetch in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_artist = {executor.submit(process_artist, aid): aid for aid in artist_ids}
+        
+        for future in concurrent.futures.as_completed(future_to_artist):
+            try:
+                tracks = future.result()
+                if tracks:
+                    new_tracks.extend(tracks)
+            except Exception as exc:
+                print(f"Worker generated an exception: {exc}")
 
     # 3) Remove duplicate URIs
     track_map = {}
@@ -117,14 +130,12 @@ def run_update_for_user(sp, current_user_id, exclude_covers=False, exclude_remix
     playlists_response = sp.current_user_playlists(limit=50)
     playlists = playlists_response["items"]
 
-    # Pagination for playlists just in case user has many
     while playlists_response.get('next'):
         playlists_response = sp.next(playlists_response)
         playlists.extend(playlists_response['items'])
 
     playlist = next(
-        (p for p in playlists if p["name"].strip(
-        ).lower() == playlist_name_target.lower()),
+        (p for p in playlists if p["name"].strip().lower() == playlist_name_target.lower()),
         None
     )
 
@@ -158,12 +169,9 @@ def run_update_for_user(sp, current_user_id, exclude_covers=False, exclude_remix
         if item["track"] and item["track"]["uri"]:
             uri = item["track"]["uri"]
             existing_uris.add(uri)
-            # Check date
             added_at_str = item["added_at"]
             if added_at_str:
-                # Fix ISO format usually returned by Spotify
-                added_at_dt = datetime.fromisoformat(
-                    added_at_str.replace("Z", "+00:00"))
+                added_at_dt = datetime.fromisoformat(added_at_str.replace("Z", "+00:00"))
                 if added_at_dt < two_weeks_ago:
                     old_uris.append(uri)
 
